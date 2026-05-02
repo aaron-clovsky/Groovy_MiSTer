@@ -552,6 +552,34 @@ ddram ddram
 
 ///////////////////////////////////////////////////////////////////////////
 //
+//           YCoCg to RGB Color Space Conversion
+//
+///////////////////////////////////////////////////////////////////////////
+
+function [7:0] clamp_u8;
+    input signed [9:0] value;
+    begin
+        clamp_u8 = value[9] ? 8'h00 : value[8] ? 8'hFF : value[7:0];
+    end
+endfunction
+
+function automatic void ycocg_to_rgb;
+    input [7:0] Y, Co, Cg;
+    output [7:0] R, G, B;
+    begin
+        logic signed [9:0] s_Y = 10'($signed({2'b0, Y}));
+        logic signed [9:0] s_Co = 10'($signed(Co));
+        logic signed [9:0] s_Cg = 10'($signed(Cg));
+        logic signed [9:0] tmp = s_Y - s_Cg;
+
+        R = clamp_u8(tmp + s_Co);
+        G = clamp_u8(s_Y + s_Cg);
+        B = clamp_u8(tmp - s_Co);
+    end
+endfunction
+
+///////////////////////////////////////////////////////////////////////////
+//
 //                       TASKS
 //
 ///////////////////////////////////////////////////////////////////////////
@@ -562,6 +590,41 @@ task decode_pixel;
   input[23:0] total_pixels; 
   begin  
    case (rgb_mode)
+   2'd3: // YCoYCg
+   begin
+    // Same logic as RGB565 below
+    if (total_pixels - PoC_subframe_px_vram > 3) begin
+      vram_wren1 <= 1'b1;
+      vram_wren2 <= 1'b1;
+      vram_wren3 <= 1'b1;
+      vram_wren4 <= 1'b1;
+      if (drive_lz4) PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd4;
+      PoC_subframe_px_vram               <= PoC_subframe_px_vram + 24'd4;
+    end else
+    if (total_pixels - PoC_subframe_px_vram > 2) begin
+      vram_wren1 <= 1'b1;
+      vram_wren2 <= 1'b1;
+      vram_wren3 <= 1'b1;
+      if (drive_lz4) PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd3;
+      PoC_subframe_px_vram               <= PoC_subframe_px_vram + 24'd3;
+    end else
+    if (total_pixels - PoC_subframe_px_vram > 1) begin
+      vram_wren1 <= 1'b1;
+      vram_wren2 <= 1'b1;
+      if (drive_lz4) PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd2;
+      PoC_subframe_px_vram               <= PoC_subframe_px_vram + 24'd2;
+    end else
+    if (total_pixels - PoC_subframe_px_vram > 0) begin
+      vram_wren1 <= 1'b1;
+      if (drive_lz4) PoC_subframe_px_lz4 <= PoC_subframe_px_lz4 + 24'd1;
+      PoC_subframe_px_vram               <= PoC_subframe_px_vram + 24'd1;
+    end
+    // Use conversion function
+    ycocg_to_rgb(word64[00 +: 08], word64[08 +: 08], word64[24 +: 08], r_vram_in1, g_vram_in1, b_vram_in1);
+    ycocg_to_rgb(word64[16 +: 08], word64[08 +: 08], word64[24 +: 08], r_vram_in2, g_vram_in2, b_vram_in2);
+    ycocg_to_rgb(word64[32 +: 08], word64[40 +: 08], word64[56 +: 08], r_vram_in3, g_vram_in3, b_vram_in3);
+    ycocg_to_rgb(word64[48 +: 08], word64[40 +: 08], word64[56 +: 08], r_vram_in4, g_vram_in4, b_vram_in4);
+   end
    2'd2: // RGB565
    begin
     if (total_pixels - PoC_subframe_px_vram > 3) begin 
@@ -1001,7 +1064,7 @@ always @(posedge clk_sys) begin
                vram_reset              <= vga_pixels != vram_pixels ? 1'b1 : 1'b0; // prev. ddr crushed?  
                if (vram_queue == 0) vga_wait_vblank <= 1'b1;               
              end                                             
-             PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_subframe_px_ddr << 2) : (rgb_mode == 2) ? (PoC_subframe_px_ddr << 1) : (PoC_subframe_px_ddr << 1) + PoC_subframe_px_ddr;             
+             PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_subframe_px_ddr << 2) : (rgb_mode >= 2) ? (PoC_subframe_px_ddr << 1) : (PoC_subframe_px_ddr << 1) + PoC_subframe_px_ddr;
              state                   <= PoC_subframe_bl_ddr == 65535 ? S_Blit_End_Raw : S_Blit_Prepare_Raw;                               
            end                          
          end          
@@ -1080,7 +1143,7 @@ always @(posedge clk_sys) begin
            PoC_subframe_px_vram    <= 24'd0;
            PoC_subframe_bl_ddr     <= 16'd1;                      
            PoC_subframe_bl_vram    <= 16'd1;                   
-           PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_px_frameskip << 2) : (rgb_mode == 2) ? (PoC_px_frameskip << 1) : (PoC_px_frameskip << 1) + PoC_px_frameskip;         
+           PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_px_frameskip << 2) : (rgb_mode >= 2) ? (PoC_px_frameskip << 1) : (PoC_px_frameskip << 1) + PoC_px_frameskip;
            PoC_subframe_vram_bytes <= 28'd0;             
            PoC_frame_rgb_offset    <= 2'd0;                                     
            vram_reset              <= 1'b1;            
@@ -1113,7 +1176,7 @@ always @(posedge clk_sys) begin
              PoC_subframe_px_ddr     <= PoC_px_frameskip;           
              PoC_subframe_bl_ddr     <= PoC_subframe_bl_vram + 16'd1;                     
              PoC_subframe_bl_vram    <= PoC_subframe_bl_vram + 16'd1;               
-             PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_px_frameskip << 2) : (rgb_mode == 2) ? (PoC_px_frameskip << 1) : (PoC_px_frameskip << 1) + PoC_px_frameskip; 
+             PoC_subframe_ddr_bytes  <= (rgb_mode == 1) ? (PoC_px_frameskip << 2) : (rgb_mode >= 2) ? (PoC_px_frameskip << 1) : (PoC_px_frameskip << 1) + PoC_px_frameskip;
              auto_blit               <= 1'b0;                    
              state                   <= S_Blit_Prepare_Raw;                                                                   
            end else begin
@@ -1336,7 +1399,7 @@ always @(posedge clk_sys) begin
                PoC_lz4_field         <= lz4_field;   
                PoC_lz4_delta			 <= lz4_delta;		 
 					PoC_lz4_delta_req		 <= lz4_delta;	
-			      PoC_lz4_delta_bytes   <= (rgb_mode == 1) ? (vga_pixels << 2) : (rgb_mode == 2) ? (vga_pixels << 1) : (vga_pixels << 1) + vga_pixels;
+			      PoC_lz4_delta_bytes   <= (rgb_mode == 1) ? (vga_pixels << 2) : (rgb_mode >= 2) ? (vga_pixels << 1) : (vga_pixels << 1) + vga_pixels;
                PoC_lz4_delta_FB[0]   <= 64'd0;
                PoC_lz4_delta_index   <= 7'd0;
              end                                                                    
