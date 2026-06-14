@@ -134,7 +134,8 @@ enum SoundChanCode { //gmw_init soundChan
 enum RGBModeCode { //gmw_init rgbMode
     RGB_888 = 0,
     RGB_A888 = 1,
-    RGB_565 = 2
+    RGB_565 = 2,
+    YCOYCG = 3
 };
 
 /* Declaration of the wrapper functions */
