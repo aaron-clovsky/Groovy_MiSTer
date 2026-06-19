@@ -152,21 +152,19 @@
   <ItemGroup>
     <ClCompile Include="groovymister_wrapper.cpp" />
     <ClCompile Include="groovymister.cpp" />
-    <ClCompile Include="lz4\lib\lz4.c" />
-    <ClCompile Include="lz4\lib\lz4file.c" />
-    <ClCompile Include="lz4\lib\lz4frame.c" />
-    <ClCompile Include="lz4\lib\lz4hc.c" />
-    <ClCompile Include="lz4\lib\xxhash.c" />
   </ItemGroup>
+  <Target Name="lz4" BeforeTargets="BeforeClCompile">
+    <ItemGroup>
+      <ClCompile Include="lz4\lib\lz4.c"/>
+      <ClCompile Include="lz4\lib\lz4file.c"/>
+      <ClCompile Include="lz4\lib\lz4frame.c"/>
+      <ClCompile Include="lz4\lib\lz4hc.c"/>
+      <ClCompile Include="lz4\lib\xxhash.c"/>
+    </ItemGroup>
+  </Target>
   <ItemGroup>
     <ClInclude Include="groovymister_wrapper.h" />
     <ClInclude Include="groovymister.h" />
-    <ClInclude Include="lz4\lib\lz4.h" />
-    <ClInclude Include="lz4\lib\lz4file.h" />
-    <ClInclude Include="lz4\lib\lz4frame.h" />
-    <ClInclude Include="lz4\lib\lz4frame_static.h" />
-    <ClInclude Include="lz4\lib\lz4hc.h" />
-    <ClInclude Include="lz4\lib\xxhash.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
