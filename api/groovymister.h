@@ -3,11 +3,21 @@
 
 #include <inttypes.h>
 
+#define NOMINMAX
+#include <algorithm>
+#include <limits>
+
+#ifdef _MSC_VER
+	#pragma comment(lib, "ws2_32.lib")
+#endif
+
 #ifdef _WIN32
  #include <winsock2.h>
  #include <ws2tcpip.h>
  #include <mswsock.h>
+#ifndef _MSC_VER
  #include "rio.h"
+#endif
 #else
  #include <cstring>
  #include <cstdio>

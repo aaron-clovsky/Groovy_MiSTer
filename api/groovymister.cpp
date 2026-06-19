@@ -18,8 +18,8 @@
  #include <unistd.h>
 #endif
 
-#include "lz4/lz4.h"
-#include "lz4/lz4hc.h"
+#include "lz4.h"
+#include "lz4hc.h"
 
 #define USE_RIO 1
 

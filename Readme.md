@@ -1,5 +1,21 @@
 # Groovy core for MiSTer
 
+- This fork adds 4:2:2 Chroma Subsampling support to the Groovy core and API
+- YcoCg Encoder/Decoder is separately published [here](https://github.com/aaron-clovsky/rgb_to_ycocg)
+- Requires patched Main_MiSTer which can be found [here](https://github.com/aaron-clovsky/Main_MiSTer)
+
+# Notes
+
+- Added new RGB mode (3) to implementation, should be fully backwards compatible
+- Updated C++ API to compile in Visual Studio
+- Added Visual Studio project file
+- Removed copied lz4 files from api and added lz4 as a submodule
+- Use the ```--recursive``` option when cloning, like this:
+
+```git clone --recursive https://github.com/aaron-clovsky/Groovy_MiSTer```
+
+# Original Readme
+
 ## General description
 This core is a analog GPU for CRTs aiming for very low subframe latency
 
