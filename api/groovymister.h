@@ -106,9 +106,10 @@ class GroovyMister
 	fpgaJoyInputs joyInputs; // Data with last joystick inputs received
 	fpgaPS2Inputs ps2Inputs; // Data with last ps2 inputs received
 
-	GroovyMister();
+	GroovyMister(bool lz4_user_buffer = false);
 	~GroovyMister();
 	
+	void setPBufferBlit(uint8_t field, char* buffer); // Requires passing lz4_user_buffer = true to constructor, sets user allocated field buffers
 	char* getPBufferBlit(uint8_t field); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
 	char* getPBufferBlitDelta(void); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit with delta difference between actual frame and last
 	char* getPBufferAudio(void); // This buffer are registered and aligned for sending audio. Populate it before CmdAudio
@@ -197,6 +198,7 @@ class GroovyMister
 	uint32_t m_network_ping;
 	uint8_t m_delta_enabled[2];
 	uint8_t m_isConnected;
+	bool m_lz4_user_buffer; // Disables blit buffer alloc, enables/requires use of setPBufferBlit(), forces m_lz4Frames != 0
 
 	char *AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount);
 	void Send(void *cmd, int cmdSize);

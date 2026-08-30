@@ -58,7 +58,7 @@ typedef union
 #define K_CONGESTION_SIZE    500000
 #define K_CONGESTION_TIME    110000
 
-GroovyMister::GroovyMister()
+GroovyMister::GroovyMister(bool lz4_user_buffer)
 {
 	m_verbose = 0;
 	m_lz4Frames = 0;
@@ -112,6 +112,7 @@ GroovyMister::GroovyMister()
 	m_delta_enabled[0] = 0;
 	m_delta_enabled[1] = 0;
 	m_isConnected = 0;
+	m_lz4_user_buffer = lz4_user_buffer;
 
 	memset(&m_tickStart, 0, sizeof(m_tickStart));
 	memset(&m_tickEnd, 0, sizeof(m_tickEnd));
@@ -124,7 +125,7 @@ GroovyMister::GroovyMister()
 	m_pBufferBlitDelta = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
 	for(int i=0;i<2;i++)
 	{
-		m_pBufferBlit[i] = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
+		m_pBufferBlit[i] = !m_lz4_user_buffer ? AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount) : nullptr;
 		m_pBufferLZ4[i] = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
 	}		
 }
@@ -137,7 +138,7 @@ GroovyMister::~GroovyMister()
 	VirtualFree(m_pBufferBlitDelta, 0, MEM_RELEASE);
 	for(int i=0;i<2;i++)
 	{
-		VirtualFree(m_pBufferBlit[i], 0, MEM_RELEASE);
+		if (!m_lz4_user_buffer) VirtualFree(m_pBufferBlit[i], 0, MEM_RELEASE);
 		VirtualFree(m_pBufferLZ4[i], 0, MEM_RELEASE);
 	}
 #else
@@ -149,6 +150,11 @@ GroovyMister::~GroovyMister()
 		free(m_pBufferLZ4[i]);
 	}
 #endif
+}
+
+void GroovyMister::setPBufferBlit(uint8_t field, char * buffer)
+{
+	if (m_lz4_user_buffer) m_pBufferBlit[field] = buffer;
 }
 
 char* GroovyMister::getPBufferBlit(uint8_t field)
@@ -438,14 +444,16 @@ int GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, int lz4Fr
 	}
 #endif
 
-	LOG(0,"[MiSTer] Sending CMD_INIT...lz4 %d sound_rate %d sound_chan %d rgb_mode %d mtu %d\n", lz4Frames, soundRate, soundChan, rgbMode, mtu);
+	m_lz4Frames = (!m_lz4_user_buffer) ? lz4Frames : (lz4Frames != 0 ? lz4Frames : 1);
 
-	m_lz4Frames = lz4Frames;
+	const char* lz4_note = (m_lz4Frames != lz4Frames) ? " (overridden to 1)" : "";
+	LOG(0, "[MiSTer] Sending CMD_INIT...lz4 %d%s sound_rate %d sound_chan %d rgb_mode %d mtu %d\n", lz4Frames, lz4_note, soundRate, soundChan, rgbMode, mtu);
+
 	m_soundChan = soundChan;
 	m_rgbMode = rgbMode;
 
 	m_bufferSend[0] = CMD_INIT;
-	m_bufferSend[1] = (lz4Frames) ? 1 : 0; //0-RAW or 1-LZ4 ;
+	m_bufferSend[1] = (m_lz4Frames) ? 1 : 0; //0-RAW or 1-LZ4 ;
 	m_bufferSend[2] = (soundRate == 22050) ? 1 : (soundRate == 44100) ? 2 : (soundRate == 48000) ? 3 : 0;
 	m_bufferSend[3] = soundChan;
 	m_bufferSend[4] = rgbMode;
