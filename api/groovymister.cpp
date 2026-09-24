@@ -21,6 +21,13 @@
 #include "lz4.h"
 #include "lz4hc.h"
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#include <immintrin.h>
+#define CPU_PAUSE() _mm_pause()
+#else
+#define CPU_PAUSE() ((void)0)
+#endif
+
 #define USE_RIO 1
 
 #define LOG(sev,fmt, ...) do {\
@@ -112,7 +119,13 @@ GroovyMister::GroovyMister(bool lz4_user_buffer)
 	m_delta_enabled[0] = 0;
 	m_delta_enabled[1] = 0;
 	m_isConnected = 0;
-	m_lz4_user_buffer = lz4_user_buffer;
+	m_enableSleepOnWaitSync = false;
+	m_lz4UserBuffer = lz4_user_buffer;
+	m_sockTransmitRate = 1000000000;
+	m_disableCongestionControl = false;
+	m_burstCount = 0;
+	m_burstTime = 0;
+	m_mgigSwitchBufferSize = 0;
 
 	memset(&m_tickStart, 0, sizeof(m_tickStart));
 	memset(&m_tickEnd, 0, sizeof(m_tickEnd));
@@ -125,9 +138,12 @@ GroovyMister::GroovyMister(bool lz4_user_buffer)
 	m_pBufferBlitDelta = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
 	for(int i=0;i<2;i++)
 	{
-		m_pBufferBlit[i] = !m_lz4_user_buffer ? AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount) : nullptr;
+		m_pBufferBlit[i] = !m_lz4UserBuffer ? AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount) : nullptr;
 		m_pBufferLZ4[i] = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
-	}		
+	}
+
+	QueryPerformanceFrequency(&m_QPF);
+	m_waitableTimer = CreateWaitableTimerEx(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
 }
 
 
@@ -138,9 +154,11 @@ GroovyMister::~GroovyMister()
 	VirtualFree(m_pBufferBlitDelta, 0, MEM_RELEASE);
 	for(int i=0;i<2;i++)
 	{
-		if (!m_lz4_user_buffer) VirtualFree(m_pBufferBlit[i], 0, MEM_RELEASE);
+		if (!m_lz4UserBuffer) VirtualFree(m_pBufferBlit[i], 0, MEM_RELEASE);
 		VirtualFree(m_pBufferLZ4[i], 0, MEM_RELEASE);
 	}
+
+	if (m_waitableTimer) CloseHandle(m_waitableTimer);
 #else
 	free(m_pBufferAudio);
 	free(m_pBufferBlitDelta);
@@ -152,9 +170,24 @@ GroovyMister::~GroovyMister()
 #endif
 }
 
+void GroovyMister::enableSleepOnWaitSync()
+{
+	m_enableSleepOnWaitSync = true;
+}
+
+void GroovyMister::disableCongestionControl()
+{
+	m_disableCongestionControl = true;
+}
+
+void GroovyMister::enablePacketPacing(uint32_t mgig_switch_buffer_size)
+{
+	m_mgigSwitchBufferSize = mgig_switch_buffer_size;
+}
+
 void GroovyMister::setPBufferBlit(uint8_t field, char * buffer)
 {
-	if (m_lz4_user_buffer) m_pBufferBlit[field] = buffer;
+	if (m_lz4UserBuffer) m_pBufferBlit[field] = buffer;
 }
 
 char* GroovyMister::getPBufferBlit(uint8_t field)
@@ -379,6 +412,34 @@ int GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, int lz4Fr
 		}
 
 		m_rio.RIONotify(m_receiveQueue);
+
+		do
+		{
+			sockaddr_storage peerAddr = { 0 };
+			int len = sizeof(peerAddr);
+			if (0 != getpeername(m_sockFD, (sockaddr*)(&peerAddr), &len))
+			{
+				LOG(1, "[MiSTer] Could not determine interface transmit rate, getpeername() failed : %lu", ::WSAGetLastError());
+				break;
+			}
+
+			DWORD if_index = 0;
+			DWORD errorCode = GetBestInterfaceEx(reinterpret_cast<sockaddr*>(&peerAddr), &if_index);
+			if (0 != errorCode) {
+				LOG(1, "[MiSTer] Could not determine interface transmit rate, GetBestInterfaceEx() failed : %lu", errorCode);
+				break;
+			}
+
+			MIB_IF_ROW2 if_row = { 0 };
+			if_row.InterfaceIndex = if_index;
+			errorCode = GetIfEntry2(&if_row);
+			if (0 != errorCode) {
+				LOG(1, "[MiSTer] Could not determine interface transmit rate, GetIfEntry2() failed : %lu", errorCode);
+				break;
+			}
+
+			m_sockTransmitRate = if_row.TransmitLinkSpeed;
+		} while (0);
 	}
 	else
 	{
@@ -444,7 +505,14 @@ int GroovyMister::CmdInit(const char* misterHost, uint16_t misterPort, int lz4Fr
 	}
 #endif
 
-	m_lz4Frames = (!m_lz4_user_buffer) ? lz4Frames : (lz4Frames != 0 ? lz4Frames : 1);
+	const double gbps = 1000000000.0;
+	if (m_mgigSwitchBufferSize != 0 && m_sockTransmitRate > gbps)
+	{
+		m_burstCount = (uint32_t)(((double)m_mgigSwitchBufferSize / (1.0 - (gbps / (double)m_sockTransmitRate))) / (double)mtu);
+		m_burstTime = (uint32_t)((m_burstCount * (double)mtu * 8) / 100.0);
+	}
+
+	m_lz4Frames = (!m_lz4UserBuffer) ? lz4Frames : (lz4Frames != 0 ? lz4Frames : 1);
 
 	const char* lz4_note = (m_lz4Frames != lz4Frames) ? " (overridden to 1)" : "";
 	LOG(0, "[MiSTer] Sending CMD_INIT...lz4 %d%s sound_rate %d sound_chan %d rgb_mode %d mtu %d\n", lz4Frames, lz4_note, soundRate, soundChan, rgbMode, mtu);
@@ -654,7 +722,7 @@ void GroovyMister::CmdBlit(uint32_t frame, uint8_t field, uint16_t vCountSync, u
 		}
 	}
 	
-	if (m_doCongestionControl)
+	if (m_doCongestionControl && !m_disableCongestionControl)
 	{
 		m_tickStart = m_tickCongestion;
 		setTimeEnd();
@@ -663,6 +731,7 @@ void GroovyMister::CmdBlit(uint32_t frame, uint8_t field, uint16_t vCountSync, u
 		{
 			setTimeEnd();
 			m_streamTime = DiffTime();
+			CPU_PAUSE();
 		}
 	}
 	
@@ -800,11 +869,21 @@ void GroovyMister::WaitSync(void)
 	setTimeStart();
 	do
 	{
+		const int32_t SLEEP_THRESHOLD = 30000;
+		int32_t remaining = sleepTime - (int32_t)realTime;
+
+		if (m_enableSleepOnWaitSync && remaining > SLEEP_THRESHOLD)
+		{
+			const int32_t SLEEP_ADJUSTMENT = 20000;
+			uint32_t suspendTime = (uint32_t)(remaining - SLEEP_ADJUSTMENT);
+		    SleepTicks(suspendTime);
+		}
+
 		int diffRaster = DiffTimeRaster();
 		sleepTime = (diffRaster < 0 && abs(diffRaster) > sleepTime) ? 0 : sleepTime + diffRaster;
 		setTimeEnd();
 		realTime = DiffTime();
-
+		CPU_PAUSE();
 	} while (realTime <= (uint32_t) sleepTime);
 
 	m_tickSync = m_tickEnd;
@@ -1008,22 +1087,69 @@ if (USE_RIO)
 {
 	DWORD flags = RIO_MSG_DONT_NOTIFY | RIO_MSG_DEFER;
 	int i=0;
-	while (bytesSended < bytesToSend)
+
+	if (m_burstCount == 0) // Transmit as quickly as possible
 	{
-		if (whichBuffer == 0)
+		while (bytesSended < bytesToSend)
 		{
-			m_pBufsBlit[field][i].Length = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
-			m_rio.RIOSend(m_requestQueue, &m_pBufsBlit[field][i], 1, flags, &m_pBufsBlit[field][i]);
+			if (whichBuffer == 0)
+			{
+				m_pBufsBlit[field][i].Length = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
+				m_rio.RIOSend(m_requestQueue, &m_pBufsBlit[field][i], 1, flags, &m_pBufsBlit[field][i]);
+			}
+			else
+			{
+				m_pBufsAudio[i].Length = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
+				m_rio.RIOSend(m_requestQueue, &m_pBufsAudio[i], 1, flags, &m_pBufsAudio[i]);
+			}
+			bytesSended += m_mtu;
+			i++;
 		}
-		else
-		{
-			m_pBufsAudio[i].Length = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
-			m_rio.RIOSend(m_requestQueue, &m_pBufsAudio[i], 1, flags, &m_pBufsAudio[i]);
-		}
-		bytesSended += m_mtu;
-		i++;
+		m_rio.RIOSend(m_requestQueue, NULL, 0, RIO_MSG_COMMIT_ONLY, NULL);
 	}
-	m_rio.RIOSend(m_requestQueue, NULL, 0, RIO_MSG_COMMIT_ONLY, NULL);
+	else // Pace packet delivery
+	{
+		LARGE_INTEGER tickStartBackup = m_tickStart;
+		LARGE_INTEGER tickEndBackup = m_tickEnd;
+
+		uint32_t p = 0;
+		while (bytesSended < bytesToSend)
+		{
+			setTimeStart();
+
+			p = 0;
+			while (bytesSended < bytesToSend && p < m_burstCount)
+			{
+				if (whichBuffer == 0)
+				{
+					m_pBufsBlit[field][i].Length = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
+					m_rio.RIOSend(m_requestQueue, &m_pBufsBlit[field][i], 1, flags, &m_pBufsBlit[field][i]);
+				}
+				else
+				{
+					m_pBufsAudio[i].Length = (bytesToSend - bytesSended >= m_mtu) ? m_mtu : bytesToSend - bytesSended;
+					m_rio.RIOSend(m_requestQueue, &m_pBufsAudio[i], 1, flags, &m_pBufsAudio[i]);
+				}
+				bytesSended += m_mtu;
+				i++;
+				p++;
+			}
+
+			m_rio.RIOSend(m_requestQueue, NULL, 0, RIO_MSG_COMMIT_ONLY, NULL);
+
+			if (bytesSended >= bytesToSend) break;
+
+			do
+			{
+				setTimeEnd();
+				CPU_PAUSE();
+			} while (DiffTime() < m_burstTime);
+		}
+
+		m_tickStart = tickStartBackup;
+		m_tickEnd = tickEndBackup;
+	}
+
 	return;
 }
 #endif
@@ -1070,7 +1196,7 @@ inline void GroovyMister::setTimeEnd(void)
 uint32_t GroovyMister::DiffTime(void)
 {
 #ifdef _WIN32
-	return (uint32_t)(m_tickEnd.QuadPart - m_tickStart.QuadPart);
+	return (uint32_t)(((m_tickEnd.QuadPart - m_tickStart.QuadPart) * 10000000LL) / m_QPF.QuadPart);
 #else
 	uint32_t diffTime = 0;
 	timespec temp;
@@ -1086,6 +1212,24 @@ uint32_t GroovyMister::DiffTime(void)
 	}
 	diffTime = (temp.tv_sec * 1000000000) + temp.tv_nsec;
 	return diffTime / 100;
+#endif
+}
+
+void GroovyMister::SleepTicks(uint32_t ticks)
+{
+#ifdef WIN32
+	if (!m_waitableTimer) return;
+
+	LARGE_INTEGER dueTime;
+	dueTime.QuadPart = -(int64_t)ticks;
+	(void)SetWaitableTimer(m_waitableTimer, &dueTime, 0, NULL, NULL, FALSE);
+	(void)WaitForSingleObject(m_waitableTimer, INFINITE);
+#else
+	struct timespec ts;
+	ts.tv_sec = (time_t)(ticks / 10000000);
+	ts.tv_nsec = (long)((ticks % 10000000) * 100);
+
+	(void)nanosleep(&ts, NULL);
 #endif
 }
 

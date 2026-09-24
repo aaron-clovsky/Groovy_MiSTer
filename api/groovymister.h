@@ -9,6 +9,7 @@
 
 #ifdef _MSC_VER
 	#pragma comment(lib, "ws2_32.lib")
+	#pragma comment(lib, "iphlpapi.lib")
 #endif
 
 #ifdef _WIN32
@@ -16,6 +17,8 @@
  #include <winsock2.h>
  #include <ws2tcpip.h>
  #include <mswsock.h>
+ #include <iphlpapi.h>
+ #include <netioapi.h>
 #ifndef _MSC_VER
  #include "rio.h"
 #endif
@@ -109,6 +112,9 @@ class GroovyMister
 	GroovyMister(bool lz4_user_buffer = false);
 	~GroovyMister();
 	
+	void enableSleepOnWaitSync(); // Allow WaitSync to yield
+	void disableCongestionControl(); // Disable legacy congestion control
+	void enablePacketPacing(uint32_t mgig_switch_buffer_size = 16384); // Enable link-speed and netowrk switch buffer size aware packet pacing
 	void setPBufferBlit(uint8_t field, char* buffer); // Requires passing lz4_user_buffer = true to constructor, sets user allocated field buffers
 	char* getPBufferBlit(uint8_t field); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
 	char* getPBufferBlitDelta(void); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit with delta difference between actual frame and last
@@ -159,6 +165,8 @@ class GroovyMister
 	RIO_BUF *m_pBufsAudio;
 	SOCKET m_sockInputsFD;
 
+	LARGE_INTEGER m_QPF; // Result of QueryPerformanceFrequency(), required to correctly calculate 100ns units (Ticks)
+	HANDLE m_waitableTimer; // Handle for CreateWaitableTimerEx(), required for SleepTicks() 
 	LARGE_INTEGER m_tickStart;
 	LARGE_INTEGER m_tickEnd;
 	LARGE_INTEGER m_tickSync;
@@ -198,7 +206,13 @@ class GroovyMister
 	uint32_t m_network_ping;
 	uint8_t m_delta_enabled[2];
 	uint8_t m_isConnected;
-	bool m_lz4_user_buffer; // Disables blit buffer alloc, enables/requires use of setPBufferBlit(), forces m_lz4Frames != 0
+	bool m_enableSleepOnWaitSync; // Allows for thread suspension during WaitSync()
+	bool m_lz4UserBuffer; // Set via constructor argument, disables blit buffer alloc, enables/requires use of setPBufferBlit(), forces m_lz4Frames != 0
+	bool m_disableCongestionControl; // Disables ~11ms transmission delay (K_CONGESTION_TIME) after >=500KB payload (K_CONGESTION_SIZE)
+	uint64_t m_sockTransmitRate; // Network interface transmission rate, defaults to 1Gbps, retrieved during CmdInit() (WIN32 only)
+	uint32_t m_mgigSwitchBufferSize; // Minimum required size of asymmetric link pacing buffer in network switch, used when m_sockTransmitRate > 1Gbps
+	uint32_t m_burstCount; // Packets in a transmission burst, calculated from m_sockTransmitRate and m_mgigSwitchBufferSize
+	uint32_t m_burstTime; // Ticks (100 nanoseconds) delay for transmission throttling to 1Gbps, calculated from m_burstCount
 
 	char *AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount);
 	void Send(void *cmd, int cmdSize);
@@ -206,6 +220,7 @@ class GroovyMister
 	void setTimeStart(void);
 	void setTimeEnd(void);
 	uint32_t DiffTime(void);
+	void SleepTicks(uint32_t ticks); // 100ns resolution sleep
 	void setFpgaStatus(void);
 	void setFpgaJoystick(int len);
 	void setFpgaPS2(int len);
