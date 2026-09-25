@@ -21,7 +21,8 @@ This fork acts as a backwards compatible drop in replacement for the original Gr
 
 ## General improvements
 - _mm_pause() is now used in timer loops
-- Updated C++ API to compile in latest Visual Studio
+- API internal state is now reset when calling CmdClose()
+- Updated API to compile in latest Visual Studio
 - Added Visual Studio project file
 - Removed copied lz4 files from API and added lz4 as a submodule
 - Updated lz4 library
