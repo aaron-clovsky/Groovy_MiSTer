@@ -114,7 +114,7 @@ class GroovyMister
 	
 	void enableSleepOnWaitSync(); // Allow WaitSync to yield
 	void disableCongestionControl(); // Disable legacy congestion control
-	void enablePacketPacing(uint32_t mgig_switch_buffer_size = 16384); // Enable link-speed and netowrk switch buffer size aware packet pacing
+	void enablePacketPacing(uint32_t mgig_switch_buffer_size = 16384); // Enable link-speed and network switch buffer size aware packet pacing
 	void setPBufferBlit(uint8_t field, char* buffer); // Requires passing lz4_user_buffer = true to constructor, sets user allocated field buffers
 	char* getPBufferBlit(uint8_t field); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
 	char* getPBufferBlitDelta(void); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit with delta difference between actual frame and last

@@ -1,20 +1,35 @@
 # Groovy core for MiSTer
 
-- This fork adds 4:2:2 Chroma Subsampling support to the Groovy core and API
-- YcoCg Encoder/Decoder is separately published [here](https://github.com/aaron-clovsky/rgb_to_ycocg)
-- Requires patched Main_MiSTer which can be found [here](https://github.com/aaron-clovsky/Main_MiSTer)
+This fork acts as a backwards compatible drop in replacement for the original Groovy MiSTer core and API and includes the following changes.
 
-# Notes
+## New core features
+- Support for 4:2:2 YCoCg Chroma Subsampling (when using forked core and MiSTer Main)
+  - Main_MiSTer can be found [here](https://github.com/aaron-clovsky/Main_MiSTer)
+  - YCoCg Encoder/Decoder is separately published [here](https://github.com/aaron-clovsky/rgb_to_ycocg)
+  - Set rgbMode to 3 when calling CmdInit() or pass RGBModeCode::YCOYCG to gmw_init()
 
-- Added new RGB mode (3) to implementation, should be fully backwards compatible
-- Updated C++ API to compile in Visual Studio
+## API bug fixes
+- WIN32 monotonic time calculations now correctly use QueryPerformanceFrequency()
+
+## New API features
+- Constructor now accepts optional argument bool lz4_user_buffer
+ -- If true lz4 compression is forced on but the user may now supply their own bitmap buffers using the new method setPBufferBlit()
+ -- This eliminates a buffer copy that is normally required when using lz4 compression
+- New method disableCongestionControl() disables the ~11ms spin (K_CONGESTION_TIME) in CmdBlit() when a frame exceeds 500,000 bytes (K_CONGESTION_SIZE)
+- New method enablePacketPacing() (currently implemented on WIN32 only) enables packet pacing when network interface speed exceeds 1Gbps, burst size can be tuned by specifying an assumed size for the asymmetric link pacing buffer in the network switch
+- New method enableSleepOnWaitSync() - Uses a high resolution sleep timer to allow WaitSync() to yield to the scheduler with a relatively low risk of losing timing precision (on WIN32 this required Windows 10 Version 1803), this will hopefully help reduce or eliminate otherwise unpredictable scheduler preemption
+
+## General improvements
+- _mm_pause() is now used in timer loops
+- Updated C++ API to compile in latest Visual Studio
 - Added Visual Studio project file
-- Removed copied lz4 files from api and added lz4 as a submodule
+- Removed copied lz4 files from API and added lz4 as a submodule
+- Updated lz4 library
 - Use the ```--recursive``` option when cloning, like this:
 
 ```git clone --recursive https://github.com/aaron-clovsky/Groovy_MiSTer```
 
-# Original Readme
+# Original readme
 
 ## General description
 This core is a analog GPU for CRTs aiming for very low subframe latency
