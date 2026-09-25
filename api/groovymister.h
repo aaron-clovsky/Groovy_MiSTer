@@ -112,7 +112,7 @@ class GroovyMister
 	GroovyMister(bool lz4_user_buffer = false);
 	~GroovyMister();
 	
-	void enableSleepOnWaitSync(); // Allow WaitSync to yield
+	void enableSleepOnWaitSync(uint32_t sleepTicksMinimum = 30000, uint32_t sleepTicksWakeMargin = 20000); // Allow WaitSync to yield
 	void disableCongestionControl(); // Disable legacy congestion control
 	void enablePacketPacing(uint32_t mgig_switch_buffer_size = 16384); // Enable link-speed and network switch buffer size aware packet pacing
 	void setPBufferBlit(uint8_t field, char* buffer); // Requires passing lz4_user_buffer = true to constructor, sets user allocated field buffers
@@ -207,12 +207,14 @@ class GroovyMister
 	uint8_t m_delta_enabled[2];
 	uint8_t m_isConnected;
 	bool m_enableSleepOnWaitSync; // Allows for thread suspension during WaitSync()
+	uint64_t m_sleepTicksMinimum; // Minimum number of waitable ticks (100 nanoseconds) for sleep to be justified
+	uint64_t m_sleepTicksWakeMargin; // Margin to subtract from total sleep time to accomodate scheduler jitter
 	bool m_lz4UserBuffer; // Set via constructor argument, disables blit buffer alloc, enables/requires use of setPBufferBlit(), forces m_lz4Frames != 0
 	bool m_disableCongestionControl; // Disables ~11ms transmission delay (K_CONGESTION_TIME) after >=500KB payload (K_CONGESTION_SIZE)
 	uint64_t m_sockTransmitRate; // Network interface transmission rate, defaults to 1Gbps, retrieved during CmdInit() (WIN32 only)
 	uint32_t m_mgigSwitchBufferSize; // Minimum required size of asymmetric link pacing buffer in network switch, used when m_sockTransmitRate > 1Gbps
 	uint32_t m_burstCount; // Packets in a transmission burst, calculated from m_sockTransmitRate and m_mgigSwitchBufferSize
-	uint32_t m_burstTime; // Ticks (100 nanoseconds) delay for transmission throttling to 1Gbps, calculated from m_burstCount
+	uint32_t m_burstTime; // Ticks delay for transmission throttling to 1Gbps, calculated from m_burstCount
 
 	void reset();
 	char *AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount);

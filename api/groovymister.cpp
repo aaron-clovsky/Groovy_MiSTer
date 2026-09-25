@@ -163,6 +163,8 @@ void GroovyMister::reset()
 	m_delta_enabled[1] = 0;
 	m_isConnected = 0;
 	m_enableSleepOnWaitSync = false;
+	m_sleepTicksMinimum = 0;
+	m_sleepTicksWakeMargin = 0;
 	m_sockTransmitRate = 1000000000;
 	m_disableCongestionControl = false;
 	m_burstCount = 0;
@@ -175,9 +177,10 @@ void GroovyMister::reset()
 	memset(&m_tickCongestion, 0, sizeof(m_tickCongestion));
 }
 
-void GroovyMister::enableSleepOnWaitSync()
+void GroovyMister::enableSleepOnWaitSync(uint32_t sleepTicksMinimum, uint32_t sleepTicksWakeMargin)
 {
-	m_enableSleepOnWaitSync = true;
+	m_sleepTicksMinimum = sleepTicksMinimum;
+	m_sleepTicksWakeMargin = (sleepTicksWakeMargin > m_sleepTicksMinimum) ? sleepTicksMinimum : sleepTicksWakeMargin;
 }
 
 void GroovyMister::disableCongestionControl()
@@ -875,13 +878,11 @@ void GroovyMister::WaitSync(void)
 	setTimeStart();
 	do
 	{
-		const int32_t SLEEP_THRESHOLD = 30000;
 		int32_t remaining = sleepTime - (int32_t)realTime;
 
-		if (m_enableSleepOnWaitSync && remaining > SLEEP_THRESHOLD)
+		if (m_enableSleepOnWaitSync && remaining > (int32_t)m_sleepTicksMinimum)
 		{
-			const int32_t SLEEP_ADJUSTMENT = 20000;
-			uint32_t suspendTime = (uint32_t)(remaining - SLEEP_ADJUSTMENT);
+			uint32_t suspendTime = (uint32_t)(remaining - m_sleepTicksWakeMargin);
 		    SleepTicks(suspendTime);
 		}
 
