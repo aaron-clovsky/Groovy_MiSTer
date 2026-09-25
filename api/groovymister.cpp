@@ -65,10 +65,10 @@ typedef union
 #define K_CONGESTION_SIZE    500000
 #define K_CONGESTION_TIME    110000
 
-GroovyMister::GroovyMister(bool lz4_user_buffer)
+GroovyMister::GroovyMister(bool lz4UserBuffer)
 {
 	reset();
-	m_lz4UserBuffer = lz4_user_buffer;
+	m_lz4UserBuffer = lz4UserBuffer;
 
 	DWORD totalBufferCount = 0;
 	DWORD totalBufferSize = 0;
@@ -188,9 +188,9 @@ void GroovyMister::disableCongestionControl()
 	m_disableCongestionControl = true;
 }
 
-void GroovyMister::enablePacketPacing(uint32_t mgig_switch_buffer_size)
+void GroovyMister::enablePacketPacing(uint32_t mgigSwitchBufferSize)
 {
-	m_mgigSwitchBufferSize = mgig_switch_buffer_size;
+	m_mgigSwitchBufferSize = mgigSwitchBufferSize;
 }
 
 void GroovyMister::setPBufferBlit(uint8_t field, char * buffer)

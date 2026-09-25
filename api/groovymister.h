@@ -109,12 +109,12 @@ class GroovyMister
 	fpgaJoyInputs joyInputs; // Data with last joystick inputs received
 	fpgaPS2Inputs ps2Inputs; // Data with last ps2 inputs received
 
-	GroovyMister(bool lz4_user_buffer = false);
+	GroovyMister(bool lz4UserBuffer = false);
 	~GroovyMister();
 	
 	void enableSleepOnWaitSync(uint32_t sleepTicksMinimum = 30000, uint32_t sleepTicksWakeMargin = 20000); // Allow WaitSync to yield
 	void disableCongestionControl(); // Disable legacy congestion control
-	void enablePacketPacing(uint32_t mgig_switch_buffer_size = 16384); // Enable link-speed and network switch buffer size aware packet pacing
+	void enablePacketPacing(uint32_t mgigSwitchBufferSize = 16384); // Enable link-speed and network switch buffer size aware packet pacing
 	void setPBufferBlit(uint8_t field, char* buffer); // Requires passing lz4_user_buffer = true to constructor, sets user allocated field buffers
 	char* getPBufferBlit(uint8_t field); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit
 	char* getPBufferBlitDelta(void); // This buffer are registered and aligned for sending rgb. Populate it before CmdBlit with delta difference between actual frame and last

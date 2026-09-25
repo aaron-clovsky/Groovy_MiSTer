@@ -12,7 +12,7 @@ This fork acts as a backwards compatible drop in replacement for the original Gr
 - WIN32 monotonic time calculations now correctly use QueryPerformanceFrequency()
 
 ## New API features
-- Constructor now accepts optional argument bool lz4_user_buffer
+- Constructor now accepts optional argument bool lz4UserBuffer
   - If set to true lz4 compression is forced on and the user must supply their own bitmap buffers using the new method setPBufferBlit()
   - This eliminates a buffer copy that is normally required when using lz4 compression
 - New method disableCongestionControl() disables the ~11ms spin (K_CONGESTION_TIME) in CmdBlit() when a frame exceeds 500,000 bytes (K_CONGESTION_SIZE)
