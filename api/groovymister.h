@@ -214,6 +214,7 @@ class GroovyMister
 	uint32_t m_burstCount; // Packets in a transmission burst, calculated from m_sockTransmitRate and m_mgigSwitchBufferSize
 	uint32_t m_burstTime; // Ticks (100 nanoseconds) delay for transmission throttling to 1Gbps, calculated from m_burstCount
 
+	void reset();
 	char *AllocateBufferSpace(const DWORD bufSize, const DWORD bufCount, DWORD& totalBufferSize, DWORD& totalBufferCount);
 	void Send(void *cmd, int cmdSize);
 	void SendStream(uint8_t whichBuffer, uint8_t field, uint32_t bytesToSend, uint32_t cSize);

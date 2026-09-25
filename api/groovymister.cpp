@@ -67,6 +67,49 @@ typedef union
 
 GroovyMister::GroovyMister(bool lz4_user_buffer)
 {
+	reset();
+	m_lz4UserBuffer = lz4_user_buffer;
+
+	DWORD totalBufferCount = 0;
+	DWORD totalBufferSize = 0;
+	m_pBufferAudio = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
+	m_pBufferBlitDelta = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
+	for(int i=0;i<2;i++)
+	{
+		m_pBufferBlit[i] = !m_lz4UserBuffer ? AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount) : nullptr;
+		m_pBufferLZ4[i] = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
+	}
+
+	QueryPerformanceFrequency(&m_QPF);
+	m_waitableTimer = CreateWaitableTimerEx(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+}
+
+
+GroovyMister::~GroovyMister()
+{
+#ifdef _WIN32
+	VirtualFree(m_pBufferAudio, 0, MEM_RELEASE);
+	VirtualFree(m_pBufferBlitDelta, 0, MEM_RELEASE);
+	for(int i=0;i<2;i++)
+	{
+		if (!m_lz4UserBuffer) VirtualFree(m_pBufferBlit[i], 0, MEM_RELEASE);
+		VirtualFree(m_pBufferLZ4[i], 0, MEM_RELEASE);
+	}
+
+	if (m_waitableTimer) CloseHandle(m_waitableTimer);
+#else
+	free(m_pBufferAudio);
+	free(m_pBufferBlitDelta);
+	for(int i=0;i<2;i++)
+	{
+		free(m_pBufferBlit[i]);
+		free(m_pBufferLZ4[i]);
+	}
+#endif
+}
+
+void GroovyMister::reset()
+{
 	m_verbose = 0;
 	m_lz4Frames = 0;
 	m_soundChan = 0;
@@ -120,7 +163,6 @@ GroovyMister::GroovyMister(bool lz4_user_buffer)
 	m_delta_enabled[1] = 0;
 	m_isConnected = 0;
 	m_enableSleepOnWaitSync = false;
-	m_lz4UserBuffer = lz4_user_buffer;
 	m_sockTransmitRate = 1000000000;
 	m_disableCongestionControl = false;
 	m_burstCount = 0;
@@ -131,43 +173,6 @@ GroovyMister::GroovyMister(bool lz4_user_buffer)
 	memset(&m_tickEnd, 0, sizeof(m_tickEnd));
 	memset(&m_tickSync, 0, sizeof(m_tickSync));
 	memset(&m_tickCongestion, 0, sizeof(m_tickCongestion));
-
-	DWORD totalBufferCount = 0;
-	DWORD totalBufferSize = 0;
-	m_pBufferAudio = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
-	m_pBufferBlitDelta = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
-	for(int i=0;i<2;i++)
-	{
-		m_pBufferBlit[i] = !m_lz4UserBuffer ? AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount) : nullptr;
-		m_pBufferLZ4[i] = AllocateBufferSpace(BUFFER_SIZE, 1, totalBufferSize, totalBufferCount);
-	}
-
-	QueryPerformanceFrequency(&m_QPF);
-	m_waitableTimer = CreateWaitableTimerEx(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
-}
-
-
-GroovyMister::~GroovyMister()
-{
-#ifdef _WIN32
-	VirtualFree(m_pBufferAudio, 0, MEM_RELEASE);
-	VirtualFree(m_pBufferBlitDelta, 0, MEM_RELEASE);
-	for(int i=0;i<2;i++)
-	{
-		if (!m_lz4UserBuffer) VirtualFree(m_pBufferBlit[i], 0, MEM_RELEASE);
-		VirtualFree(m_pBufferLZ4[i], 0, MEM_RELEASE);
-	}
-
-	if (m_waitableTimer) CloseHandle(m_waitableTimer);
-#else
-	free(m_pBufferAudio);
-	free(m_pBufferBlitDelta);
-	for(int i=0;i<2;i++)
-	{
-		free(m_pBufferBlit[i]);
-		free(m_pBufferLZ4[i]);
-	}
-#endif
 }
 
 void GroovyMister::enableSleepOnWaitSync()
@@ -228,6 +233,7 @@ void GroovyMister::CmdClose(void)
 	::closesocket(m_sockFD);
 	::closesocket(m_sockInputsFD);
 	::WSACleanup();
+	reset();
 #else
 	close(m_sockFD);
 	close(m_sockInputsFD);
