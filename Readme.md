@@ -26,6 +26,8 @@ This fork acts as a backwards compatible drop in replacement for the original Gr
 - Added Visual Studio project file
 - Removed copied lz4 files from API and added lz4 as a submodule
 - Updated lz4 library
+
+## Notes
 - Use the ```--recursive``` option when cloning, like this:
 
 ```git clone --recursive https://github.com/aaron-clovsky/Groovy_MiSTer```
