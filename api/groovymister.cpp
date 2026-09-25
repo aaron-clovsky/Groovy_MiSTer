@@ -233,11 +233,11 @@ void GroovyMister::CmdClose(void)
 	::closesocket(m_sockFD);
 	::closesocket(m_sockInputsFD);
 	::WSACleanup();
-	reset();
 #else
 	close(m_sockFD);
 	close(m_sockInputsFD);
 #endif
+	reset();
 }
 
 void GroovyMister::setVerbose(uint8_t sev)
